@@ -24,3 +24,77 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+#invoice-print-area {
+  --color-white: #ffffff !important;
+  --color-black: #000000 !important;
+  --color-gray-50: #f9fafb !important;
+  --color-gray-100: #f3f4f6 !important;
+  --color-gray-200: #e5e7eb !important;
+  --color-gray-300: #d1d5db !important;
+  --color-gray-500: #6b7280 !important;
+  --color-gray-600: #4b5563 !important;
+  --color-gray-700: #374151 !important;
+  --color-gray-800: #1f2937 !important;
+  --color-gray-900: #111827 !important;
+  --color-gray-950: #030712 !important;
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    height: 296mm !important;
+    overflow: visible !important;
+  }
+
+  /* Hide everything using visibility so children can override */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show the invoice and all its children */
+  #invoice-print-area,
+  #invoice-print-area * {
+    visibility: visible !important;
+  }
+
+  /* Position invoice centered on the A4 page */
+  #invoice-print-area {
+    border: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transform: translateX(-50%) !important;
+    width: 210mm !important;
+    height: 296mm !important;
+    max-height: none !important;
+    padding: 0 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 50% !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  @page {
+    size: A4 portrait !important;
+    margin: 0 !important;
+  }
+}
+
