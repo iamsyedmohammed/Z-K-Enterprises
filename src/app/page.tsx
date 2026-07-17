@@ -303,7 +303,12 @@ export default function InvoiceGenerator() {
 
   // Trigger Print API
   const handlePrint = () => {
+    const originalTitle = document.title;
+    document.title = `ZK Enterprises Invoice ${data.invoiceDate || ""}`;
     window.print();
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 100);
   };
 
   // Trigger PDF Generation
@@ -330,7 +335,7 @@ export default function InvoiceGenerator() {
       // Since container height is 296mm, we draw it at 0, 0 position, 210mm width and 296mm height.
       const pdf = new jsPDF("p", "mm", "a4");
       pdf.addImage(imgData, "JPEG", 0, 0, 210, 296);
-      pdf.save(`Invoice_${data.invoiceNo || "GST"}.pdf`);
+      pdf.save(`ZK Enterprises Invoice ${data.invoiceDate || ""}.pdf`);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
       alert("Error generating PDF. Please use the 'Print / Save PDF' option.");
