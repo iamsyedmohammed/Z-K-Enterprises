@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Plus, Trash2, Printer, Download, RotateCcw, 
-  Upload, Building, User, Receipt, 
+import {
+  Plus, Trash2, Printer, Download, RotateCcw,
+  Upload, Building, User, Receipt,
   Percent, FileText, Landmark, Eye, EyeOff
 } from "lucide-react";
 
@@ -11,9 +11,9 @@ interface InvoiceItem {
   id: string;
   description: string;
   hsnSac: string;
-  qty: number;
+  qty: number | "";
   unit: string;
-  rate: number;
+  rate: number | "";
 }
 
 interface InvoiceData {
@@ -41,7 +41,7 @@ interface InvoiceData {
   items: InvoiceItem[];
 
   // Taxes Configuration
-  taxRatePercent: number; // e.g. 18 -> CGST 9%, SGST 9%
+  taxRatePercent: number | ""; // e.g. 18 -> CGST 9%, SGST 9%
   isInterState: boolean; // if true, use IGST instead of CGST + SGST
 
   // Bank Details
@@ -64,12 +64,12 @@ const defaultInvoiceData: InvoiceData = {
   sellerGstin: "36ADXPO2412Q1ZS",
   sellerMobile: "9848137533",
   sellerEmail: "zkenterprises788@gmail.com",
-  
+
   invoiceNo: "2",
   invoiceDate: "2026-07-17",
 
   customerName: "SRINIVASA RESORTS LTD",
-  customerAddress: "6-3-1187,, HOTEL ITC KAKATIYA, BEGUMPET Road, BEGUMPET, Hyderabad, Telangana, 500016",
+  customerAddress: "6-3-1187, HOTEL ITC KAKATIYA, BEGUMPET Road, BEGUMPET, Hyderabad, Telangana, 500016",
   customerGstin: "36AADCS4190F1ZD",
   customerPan: "AADCS4190",
   customerMobile: "7980188581",
@@ -182,6 +182,7 @@ function numberToIndianWords(num: number): string {
 export default function InvoiceGenerator() {
   const [data, setData] = useState<InvoiceData>(defaultInvoiceData);
   const [previewScale, setPreviewScale] = useState(1);
+  const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(defaultInvoiceData.sellerLogo);
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -205,11 +206,14 @@ export default function InvoiceGenerator() {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 1280) {
-        // Desktop two-column layout
-        const scaleVal = Math.min((window.innerWidth - 640) / 950, 1);
-        setPreviewScale(scaleVal < 0.65 ? 0.65 : scaleVal);
+        // Desktop two-column layout: left column is 580px wide + some padding
+        const scaleVal = Math.min((window.innerWidth - 640) / 794, 1);
+        setPreviewScale(scaleVal < 0.5 ? 0.5 : scaleVal);
       } else {
-        setPreviewScale(1);
+        // Mobile/Tablet layout: full screen width minus horizontal padding
+        const padding = window.innerWidth < 640 ? 32 : 64;
+        const scaleVal = Math.min((window.innerWidth - padding) / 794, 1);
+        setPreviewScale(scaleVal < 0.3 ? 0.3 : scaleVal);
       }
     };
     window.addEventListener("resize", handleResize);
@@ -261,8 +265,15 @@ export default function InvoiceGenerator() {
   };
 
   const removeItemRow = (index: number) => {
-    const newItems = data.items.filter((_, i) => i !== index);
-    setData(prev => ({ ...prev, items: newItems }));
+    setDeleteConfirmIndex(index);
+  };
+
+  const confirmRemoveItem = () => {
+    if (deleteConfirmIndex !== null) {
+      const newItems = data.items.filter((_, i) => i !== deleteConfirmIndex);
+      setData(prev => ({ ...prev, items: newItems }));
+      setDeleteConfirmIndex(null);
+    }
   };
 
   const resetForm = () => {
@@ -273,11 +284,16 @@ export default function InvoiceGenerator() {
   };
 
   // Calculations
-  const subtotal = data.items.reduce((acc, item) => acc + (item.qty * item.rate), 0);
-  const totalQty = data.items.reduce((acc, item) => acc + item.qty, 0);
+  const subtotal = data.items.reduce((acc, item) => {
+    const q = item.qty === "" ? 0 : item.qty;
+    const r = item.rate === "" ? 0 : item.rate;
+    return acc + (q * r);
+  }, 0);
+  const totalQty = data.items.reduce((acc, item) => acc + (item.qty === "" ? 0 : item.qty), 0);
 
   // Tax Breakdown
-  const taxRate = data.taxRatePercent / 100;
+  const numericTaxPercent = data.taxRatePercent === "" ? 0 : data.taxRatePercent;
+  const taxRate = numericTaxPercent / 100;
   const cgstRate = data.isInterState ? 0 : taxRate / 2;
   const sgstRate = data.isInterState ? 0 : taxRate / 2;
   const igstRate = data.isInterState ? taxRate : 0;
@@ -296,7 +312,14 @@ export default function InvoiceGenerator() {
 
   // Trigger Print API
   const handlePrint = () => {
+    const originalTitle = document.title;
+    const cleanDate = formattedDate(data.invoiceDate).replace(/\//g, "-");
+    document.title = `ZK Enterprises - ${cleanDate || "Invoice"}`;
     window.print();
+    // Delay restoring title to allow browser print dialog to snapshot the filename
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 500);
   };
 
   // Trigger PDF Generation
@@ -318,12 +341,14 @@ export default function InvoiceGenerator() {
       } as any);
 
       const imgData = canvas.toDataURL("image/jpeg", 0.98);
-      
+
       // Page size A4 portrait (210mm x 297mm)
       // Since container height is 296mm, we draw it at 0, 0 position, 210mm width and 296mm height.
       const pdf = new jsPDF("p", "mm", "a4");
       pdf.addImage(imgData, "JPEG", 0, 0, 210, 296);
-      pdf.save(`Invoice_${data.invoiceNo || "GST"}.pdf`);
+
+      const cleanDate = formattedDate(data.invoiceDate).replace(/\//g, "-");
+      pdf.save(`ZK Enterprises - ${cleanDate || "Invoice"}.pdf`);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
       alert("Error generating PDF. Please use the 'Print / Save PDF' option.");
@@ -372,31 +397,34 @@ export default function InvoiceGenerator() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 py-3 px-6 flex items-center justify-between shadow-lg print:hidden">
+      <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 py-3 px-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg print:hidden">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-white">GST Invoice Generator</h1>
+          <h1 className="text-base sm:text-lg font-bold tracking-tight text-white whitespace-nowrap">GST Invoice Generator</h1>
         </div>
-        <div className="flex items-center space-x-2">
-          <button 
+        <div className="flex flex-wrap items-center gap-2">
+          <button
             onClick={resetForm}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center sm:space-x-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-xs sm:text-sm font-medium transition cursor-pointer"
+            title="Reset Demo"
           >
-            <RotateCcw className="h-4 w-4" />
-            <span>Reset Demo</span>
+            <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Reset Demo</span>
           </button>
-          <button 
+          <button
             onClick={handlePrint}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center sm:space-x-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs sm:text-sm font-medium transition cursor-pointer"
+            title="Print / Save PDF"
           >
-            <Printer className="h-4 w-4" />
-            <span>Print / Save PDF</span>
+            <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Print / Save PDF</span>
           </button>
-          <button 
+          <button
             onClick={handleDownloadPDF}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center sm:space-x-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs sm:text-sm font-medium transition cursor-pointer"
+            title="Download PDF"
           >
-            <Download className="h-4 w-4" />
-            <span>Download PDF</span>
+            <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Download PDF</span>
           </button>
         </div>
       </header>
@@ -411,7 +439,7 @@ export default function InvoiceGenerator() {
               <Building className="h-4 w-4 text-blue-400" />
               <h2 className="font-semibold text-sm tracking-wider uppercase text-blue-400">Seller Details</h2>
             </div>
-            
+
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Company Logo</label>
@@ -429,57 +457,57 @@ export default function InvoiceGenerator() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Company Name</label>
-                <input 
-                  type="text" 
-                  name="sellerName" 
-                  value={data.sellerName} 
+                <input
+                  type="text"
+                  name="sellerName"
+                  value={data.sellerName}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Address</label>
-                <textarea 
-                  name="sellerAddress" 
-                  value={data.sellerAddress} 
+                <textarea
+                  name="sellerAddress"
+                  value={data.sellerAddress}
                   onChange={handleChange}
-                  rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  rows={4}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">GST Number</label>
-                  <input 
-                    type="text" 
-                    name="sellerGstin" 
-                    value={data.sellerGstin} 
+                  <input
+                    type="text"
+                    name="sellerGstin"
+                    value={data.sellerGstin}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Mobile No</label>
-                  <input 
-                    type="text" 
-                    name="sellerMobile" 
-                    value={data.sellerMobile} 
+                  <input
+                    type="text"
+                    name="sellerMobile"
+                    value={data.sellerMobile}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Email</label>
-                <input 
-                  type="email" 
-                  name="sellerEmail" 
-                  value={data.sellerEmail} 
+                <input
+                  type="email"
+                  name="sellerEmail"
+                  value={data.sellerEmail}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
@@ -494,23 +522,23 @@ export default function InvoiceGenerator() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Invoice Number</label>
-                <input 
-                  type="text" 
-                  name="invoiceNo" 
-                  value={data.invoiceNo} 
+                <input
+                  type="text"
+                  name="invoiceNo"
+                  value={data.invoiceNo}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Invoice Date</label>
                 <div className="relative">
-                  <input 
-                    type="date" 
-                    name="invoiceDate" 
-                    value={data.invoiceDate} 
+                  <input
+                    type="date"
+                    name="invoiceDate"
+                    value={data.invoiceDate}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 [color-scheme:dark] cursor-pointer" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500 [color-scheme:dark] cursor-pointer"
                   />
                 </div>
               </div>
@@ -523,49 +551,49 @@ export default function InvoiceGenerator() {
               <User className="h-4 w-4 text-blue-400" />
               <h2 className="font-semibold text-sm tracking-wider uppercase text-blue-400">Customer Details</h2>
             </div>
-            
+
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Customer Name</label>
-                <input 
-                  type="text" 
-                  name="customerName" 
-                  value={data.customerName} 
+                <input
+                  type="text"
+                  name="customerName"
+                  value={data.customerName}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Billing Address</label>
-                <textarea 
-                  name="customerAddress" 
-                  value={data.customerAddress} 
+                <textarea
+                  name="customerAddress"
+                  value={data.customerAddress}
                   onChange={handleChange}
-                  rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  rows={4}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">GSTIN</label>
-                  <input 
-                    type="text" 
-                    name="customerGstin" 
-                    value={data.customerGstin} 
+                  <input
+                    type="text"
+                    name="customerGstin"
+                    value={data.customerGstin}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">PAN Number</label>
-                  <input 
-                    type="text" 
-                    name="customerPan" 
-                    value={data.customerPan} 
+                  <input
+                    type="text"
+                    name="customerPan"
+                    value={data.customerPan}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -573,22 +601,22 @@ export default function InvoiceGenerator() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Mobile No</label>
-                  <input 
-                    type="text" 
-                    name="customerMobile" 
-                    value={data.customerMobile} 
+                  <input
+                    type="text"
+                    name="customerMobile"
+                    value={data.customerMobile}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Place of Supply</label>
-                  <input 
-                    type="text" 
-                    name="placeOfSupply" 
-                    value={data.placeOfSupply} 
+                  <input
+                    type="text"
+                    name="placeOfSupply"
+                    value={data.placeOfSupply}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -602,7 +630,7 @@ export default function InvoiceGenerator() {
                 <Receipt className="h-4 w-4 text-blue-400" />
                 <h2 className="font-semibold text-sm tracking-wider uppercase text-blue-400">Invoice Items</h2>
               </div>
-              <button 
+              <button
                 onClick={addItemRow}
                 className="flex items-center space-x-1 px-2.5 py-1 bg-blue-600/80 hover:bg-blue-600 text-white rounded text-xs transition cursor-pointer"
               >
@@ -617,7 +645,7 @@ export default function InvoiceGenerator() {
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-slate-400 font-semibold uppercase">Item #{index + 1}</span>
                     {data.items.length > 1 && (
-                      <button 
+                      <button
                         onClick={() => removeItemRow(index)}
                         className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
                         title="Remove row"
@@ -629,46 +657,46 @@ export default function InvoiceGenerator() {
 
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-0.5">Description</label>
-                    <input 
-                      type="text" 
-                      value={item.description} 
+                    <input
+                      type="text"
+                      value={item.description}
                       onChange={(e) => handleItemChange(index, "description", e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500" 
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div className="grid grid-cols-4 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-0.5">Qty</label>
-                      <input 
-                        type="number" 
-                        value={item.qty} 
-                        onChange={(e) => handleItemChange(index, "qty", parseFloat(e.target.value) || 0)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500" 
+                      <input
+                        type="number"
+                        value={item.qty}
+                        onChange={(e) => handleItemChange(index, "qty", e.target.value === "" ? "" : parseFloat(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-0.5">Unit</label>
-                      <input 
-                        type="text" 
-                        value={item.unit} 
+                      <input
+                        type="text"
+                        value={item.unit}
                         onChange={(e) => handleItemChange(index, "unit", e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500" 
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-0.5">Rate (₹)</label>
-                      <input 
-                        type="number" 
-                        value={item.rate} 
-                        onChange={(e) => handleItemChange(index, "rate", parseFloat(e.target.value) || 0)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500" 
+                      <input
+                        type="number"
+                        value={item.rate}
+                        onChange={(e) => handleItemChange(index, "rate", e.target.value === "" ? "" : parseFloat(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-0.5">Amount (₹)</label>
                       <div className="w-full bg-slate-900/40 border border-slate-800/40 rounded px-2.5 py-1 text-xs text-slate-400 font-semibold select-none flex items-center justify-end h-[26px]">
-                        {(item.qty * item.rate).toLocaleString("en-IN")}
+                        {((item.qty === "" ? 0 : item.qty) * (item.rate === "" ? 0 : item.rate)).toLocaleString("en-IN")}
                       </div>
                     </div>
                   </div>
@@ -683,27 +711,27 @@ export default function InvoiceGenerator() {
               <Percent className="h-4 w-4 text-blue-400" />
               <h2 className="font-semibold text-sm tracking-wider uppercase text-blue-400">Tax Setup</h2>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">GST Rate (%)</label>
-                <input 
-                  type="number" 
-                  name="taxRatePercent" 
-                  value={data.taxRatePercent} 
-                  onChange={(e) => setData(prev => ({ ...prev, taxRatePercent: parseFloat(e.target.value) || 0 }))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                <input
+                  type="number"
+                  name="taxRatePercent"
+                  value={data.taxRatePercent}
+                  onChange={(e) => setData(prev => ({ ...prev, taxRatePercent: e.target.value === "" ? "" : parseFloat(e.target.value) }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="flex flex-col justify-end">
                 <label className="flex items-center space-x-2 cursor-pointer pb-2">
-                  <input 
-                    type="checkbox" 
-                    name="isInterState" 
-                    checked={data.isInterState} 
+                  <input
+                    type="checkbox"
+                    name="isInterState"
+                    checked={data.isInterState}
                     onChange={handleCheckboxChange}
-                    className="rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500 h-4 w-4" 
+                    className="rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500 h-4 w-4"
                   />
                   <span className="text-xs text-slate-300 font-medium">Inter-state (IGST only)</span>
                 </label>
@@ -720,55 +748,55 @@ export default function InvoiceGenerator() {
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Account Holder Name</label>
-                <input 
-                  type="text" 
-                  name="accountHolder" 
-                  value={data.accountHolder} 
+                <input
+                  type="text"
+                  name="accountHolder"
+                  value={data.accountHolder}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Bank Name</label>
-                  <input 
-                    type="text" 
-                    name="bankName" 
-                    value={data.bankName} 
+                  <input
+                    type="text"
+                    name="bankName"
+                    value={data.bankName}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Branch Name</label>
-                  <input 
-                    type="text" 
-                    name="bankBranch" 
-                    value={data.bankBranch} 
+                  <input
+                    type="text"
+                    name="bankBranch"
+                    value={data.bankBranch}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Account Number</label>
-                  <input 
-                    type="text" 
-                    name="accountNo" 
-                    value={data.accountNo} 
+                  <input
+                    type="text"
+                    name="accountNo"
+                    value={data.accountNo}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">IFSC Code</label>
-                  <input 
-                    type="text" 
-                    name="ifscCode" 
-                    value={data.ifscCode} 
+                  <input
+                    type="text"
+                    name="ifscCode"
+                    value={data.ifscCode}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -781,38 +809,38 @@ export default function InvoiceGenerator() {
               <FileText className="h-4 w-4 text-blue-400" />
               <h2 className="font-semibold text-sm tracking-wider uppercase text-blue-400">Additional Fields</h2>
             </div>
-            
+
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Work Order Number</label>
-                <input 
-                  type="text" 
-                  name="workOrderNo" 
-                  value={data.workOrderNo} 
+                <input
+                  type="text"
+                  name="workOrderNo"
+                  value={data.workOrderNo}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Payment Term / Notes</label>
-                <input 
-                  type="text" 
-                  name="paymentTerm" 
-                  value={data.paymentTerm} 
+                <input
+                  type="text"
+                  name="paymentTerm"
+                  value={data.paymentTerm}
                   onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Terms & Conditions</label>
-                <textarea 
-                  name="termsAndConditions" 
-                  value={data.termsAndConditions} 
+                <textarea
+                  name="termsAndConditions"
+                  value={data.termsAndConditions}
                   onChange={handleChange}
-                  rows={2}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500" 
+                  rows={4}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
@@ -820,451 +848,492 @@ export default function InvoiceGenerator() {
         </div>
 
         {/* Right Side: A4 Page Preview */}
-        <div className="flex-1 bg-slate-900 flex justify-center items-start overflow-y-auto p-4 md:p-8 relative print:p-0 print:bg-white print:overflow-visible">
-          {/* A4 Container Scaling Wrapper */}
-          <div 
-            style={{ transform: `scale(${previewScale})`, transformOrigin: "top center" }}
-            className="transition-transform duration-200 shadow-2xl print:transform-none print:shadow-none"
+        <div className="flex-1 bg-slate-900 flex justify-center items-start overflow-auto p-4 md:p-8 relative print:p-0 print:bg-white print:overflow-visible">
+          {/* A4 Container Scaling Wrapper Wrapper to lock layout box size */}
+          <div
+            style={{
+              width: `${210 * previewScale}mm`,
+              height: `${296 * previewScale}mm`,
+              position: "relative"
+            }}
+            className="invoice-scale-wrapper-outer print:w-auto print:h-auto"
           >
-            {/* The A4 Invoice Element */}
-            <div 
-              ref={previewRef}
-              id="invoice-print-area"
-              className="w-[210mm] h-[296mm] min-h-[296mm] max-h-[296mm] bg-white text-black flex flex-col font-sans select-text border border-gray-300 print:border-0 print:p-0 print:m-0 relative"
-              style={{ boxSizing: "border-box", padding: 0, fontFamily: "Arial, sans-serif" }}
+            {/* A4 Container Scaling Wrapper */}
+            <div
+              style={{
+                transform: `scale(${previewScale})`,
+                transformOrigin: "top left",
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "210mm",
+                height: "296mm"
+              }}
+              className="invoice-scale-wrapper-inner transition-transform duration-200 shadow-2xl print:transform-none print:shadow-none print:relative print:w-auto print:h-auto"
             >
-              {/* Inner wrapper to handle padding correctly in html2canvas */}
-              <div style={{ padding: "12mm", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
-                {/* Top Meta Tag */}
-                <div className="flex items-center space-x-1.5 mb-2.5" style={{ paddingTop: "14px" }}>
-                  <span 
-                    style={{ 
-                      display: "inline-block", 
-                      border: "1px solid black", 
-                      padding: "6px 8px 6px 8px", 
-                      fontSize: "10px", 
-                      fontWeight: "bold", 
-                      letterSpacing: "0.05em",
-                      textTransform: "uppercase", 
-                      lineHeight: "1", 
-                      boxSizing: "border-box" 
-                    }}
-                    className="text-black"
+              {/* The A4 Invoice Element */}
+              <div
+                ref={previewRef}
+                id="invoice-print-area"
+                className="w-[210mm] h-[296mm] min-h-[296mm] max-h-[296mm] bg-white text-black flex flex-col font-sans select-text border border-gray-300 print:border-0 print:p-0 print:m-0 relative"
+                style={{ boxSizing: "border-box", padding: 0, fontFamily: "Arial, sans-serif" }}
+              >
+                {/* Inner wrapper to handle padding correctly in html2canvas */}
+                <div style={{ padding: "12mm", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+                  {/* Top Meta Tag */}
+                  <div className="flex items-center space-x-1.5 mb-2.5" style={{ paddingTop: "14px" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        border: "1px solid black",
+                        padding: "6px 8px 6px 8px",
+                        fontSize: "10px",
+                        fontWeight: "bold",
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                        lineHeight: "1",
+                        boxSizing: "border-box"
+                      }}
+                      className="text-black"
+                    >
+                      TAX INVOICE
+                    </span>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        border: "1px solid #d1d5db",
+                        padding: "6px 8px 6px 8px",
+                        fontSize: "9px",
+                        fontWeight: "600",
+                        textTransform: "uppercase",
+                        lineHeight: "1",
+                        boxSizing: "border-box"
+                      }}
+                      className="text-gray-500"
+                    >
+                      ORIGINAL
+                    </span>
+                  </div>
+
+                  {/* Main Outer Border Grid */}
+                  <div
+                    className="border border-black flex-1 relative"
+                    style={{ boxSizing: "border-box", height: "250mm", minHeight: "250mm" }}
                   >
-                    TAX INVOICE
-                  </span>
-                  <span 
-                    style={{ 
-                      display: "inline-block", 
-                      border: "1px solid #d1d5db", 
-                      padding: "6px 8px 6px 8px", 
-                      fontSize: "9px", 
-                      fontWeight: "600", 
-                      textTransform: "uppercase", 
-                      lineHeight: "1", 
-                      boxSizing: "border-box" 
-                    }}
-                    className="text-gray-500"
-                  >
-                    ORIGINAL
-                  </span>
-                </div>
-
-                {/* Main Outer Border Grid */}
-                <div 
-                  className="border border-black flex-1 relative" 
-                  style={{ boxSizing: "border-box", height: "250mm", minHeight: "250mm" }}
-                >
-                  {/* Header Grid: Seller and Invoice Details */}
-                  <table style={{ width: "100%", borderCollapse: "collapse", borderBottom: "1px solid black" }}>
-                    <colgroup>
-                      <col style={{ width: "60%" }} />
-                      <col style={{ width: "40%" }} />
-                    </colgroup>
-                    <tbody>
-                      <tr>
-                        {/* Seller Info */}
-                        <td style={{ borderRight: "1px solid black", padding: "10px", verticalAlign: "top" }}>
-                          <div className="flex items-start space-x-3">
-                            {data.sellerLogo ? (
-                              <img src={data.sellerLogo} alt="Logo" className="w-12 h-12 object-contain rounded shrink-0" />
-                            ) : (
-                              <div className="w-12 h-12 border border-black flex items-center justify-center font-bold text-lg leading-none shrink-0 bg-gray-100 select-none">
-                                ZK
-                              </div>
-                            )}
-                            <div style={{ lineHeight: "1.2" }}>
-                              <div className="font-extrabold text-sm tracking-wide text-black">{data.sellerName}</div>
-                              <div className="text-[10px] text-gray-950 max-w-[260px] mt-0.5">{data.sellerAddress}</div>
-                              <div className="pt-1.5 font-semibold text-[10px] text-black">
-                                <div>GSTIN: <span className="font-bold">{data.sellerGstin}</span></div>
-                                <div style={{ marginTop: "1px" }}>Mobile: <span className="font-bold">{data.sellerMobile}</span></div>
-                                <div style={{ marginTop: "1px" }}>Email: <span className="font-bold">{data.sellerEmail}</span></div>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Invoice Details */}
-                        <td style={{ padding: 0, verticalAlign: "middle" }}>
-                          <table style={{ width: "100%", height: "100%", borderCollapse: "collapse" }}>
-                            <colgroup>
-                              <col style={{ width: "34%" }} />
-                              <col style={{ width: "33%" }} />
-                              <col style={{ width: "33%" }} />
-                            </colgroup>
-                            <tbody>
-                              <tr>
-                                <td style={{ borderRight: "1px solid black", padding: "10px", textAlign: "center" }}>
-                                  <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Invoice No.</div>
-                                  <div style={{ fontSize: "13px", fontWeight: "900", marginTop: "4px" }}>{data.invoiceNo}</div>
-                                </td>
-                                <td style={{ borderRight: "1px solid black", padding: "10px", textAlign: "center" }}>
-                                  <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Work Order No.</div>
-                                  <div style={{ fontSize: "11px", fontWeight: "900", marginTop: "4px" }}>{data.workOrderNo}</div>
-                                </td>
-                                <td style={{ padding: "10px", textAlign: "center" }}>
-                                  <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Invoice Date</div>
-                                  <div style={{ fontSize: "12px", fontWeight: "900", marginTop: "4px" }}>{formattedDate(data.invoiceDate)}</div>
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  {/* Customer Info (BILL TO) */}
-                  <div style={{ padding: "10px", borderBottom: "1px solid black" }}>
-                    <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>BILL TO</div>
-                    <div className="font-extrabold text-xs text-black" style={{ marginBottom: "2px" }}>{data.customerName}</div>
-                    <div className="text-[10px] text-gray-950 max-w-[650px]" style={{ marginBottom: "6px", lineHeight: "1.3" }}>{data.customerAddress}</div>
-                    
-                    <table style={{ width: "100%", borderCollapse: "collapse", borderTop: "1px solid #e5e7eb", paddingTop: "4px" }}>
+                    {/* Header Grid: Seller and Invoice Details */}
+                    <table style={{ width: "100%", borderCollapse: "collapse", borderBottom: "1px solid black" }}>
                       <colgroup>
-                        <col style={{ width: "25%" }} />
-                        <col style={{ width: "30%" }} />
-                        <col style={{ width: "22%" }} />
-                        <col style={{ width: "23%" }} />
+                        <col style={{ width: "60%" }} />
+                        <col style={{ width: "40%" }} />
                       </colgroup>
                       <tbody>
-                        <tr style={{ fontSize: "10px", fontWeight: "600", color: "black" }}>
-                          <td style={{ padding: "4px 0 0 0" }}>GSTIN: <span className="font-bold">{data.customerGstin}</span></td>
-                          <td style={{ padding: "4px 0 0 0" }}>Place of Supply: <span className="font-bold">{data.placeOfSupply}</span></td>
-                          <td style={{ padding: "4px 0 0 0" }}>Mobile: <span className="font-bold">{data.customerMobile}</span></td>
-                          <td style={{ padding: "4px 0 0 0" }}>PAN Number: <span className="font-bold">{data.customerPan}</span></td>
+                        <tr>
+                          {/* Seller Info */}
+                          <td style={{ borderRight: "1px solid black", padding: "10px", verticalAlign: "top" }}>
+                            <div className="flex items-start space-x-3">
+                              {data.sellerLogo ? (
+                                <img src={data.sellerLogo} alt="Logo" className="w-12 h-12 object-contain rounded shrink-0" />
+                              ) : (
+                                <div className="w-12 h-12 border border-black flex items-center justify-center font-bold text-lg leading-none shrink-0 bg-gray-100 select-none">
+                                  ZK
+                                </div>
+                              )}
+                              <div style={{ lineHeight: "1.2" }}>
+                                <div className="font-extrabold text-sm tracking-wide text-black">{data.sellerName}</div>
+                                <div className="text-[10px] text-gray-950 max-w-[260px] mt-0.5">{data.sellerAddress}</div>
+                                <div className="pt-1.5 font-semibold text-[10px] text-black">
+                                  <div>GSTIN: <span className="font-bold">{data.sellerGstin}</span></div>
+                                  <div style={{ marginTop: "1px" }}>Mobile: <span className="font-bold">{data.sellerMobile}</span></div>
+                                  <div style={{ marginTop: "1px" }}>Email: <span className="font-bold">{data.sellerEmail}</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Invoice Details */}
+                          <td style={{ padding: 0, verticalAlign: "middle" }}>
+                            <table style={{ width: "100%", height: "100%", borderCollapse: "collapse" }}>
+                              <colgroup>
+                                <col style={{ width: "34%" }} />
+                                <col style={{ width: "33%" }} />
+                                <col style={{ width: "33%" }} />
+                              </colgroup>
+                              <tbody>
+                                <tr>
+                                  <td style={{ borderRight: "1px solid black", padding: "10px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Invoice No.</div>
+                                    <div style={{ fontSize: "13px", fontWeight: "900", marginTop: "4px" }}>{data.invoiceNo}</div>
+                                  </td>
+                                  <td style={{ borderRight: "1px solid black", padding: "10px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Work Order No.</div>
+                                    <div style={{ fontSize: "11px", fontWeight: "900", marginTop: "4px" }}>{data.workOrderNo}</div>
+                                  </td>
+                                  <td style={{ padding: "10px", textAlign: "center" }}>
+                                    <div style={{ fontSize: "9px", color: "#4b5563", fontWeight: "bold" }}>Invoice Date</div>
+                                    <div style={{ fontSize: "12px", fontWeight: "900", marginTop: "4px" }}>{formattedDate(data.invoiceDate)}</div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Customer Info (BILL TO) */}
+                    <div style={{ padding: "10px", borderBottom: "1px solid black" }}>
+                      <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>BILL TO</div>
+                      <div className="font-extrabold text-xs text-black" style={{ marginBottom: "2px" }}>{data.customerName}</div>
+                      <div className="text-[10px] text-gray-950 max-w-[650px]" style={{ marginBottom: "6px", lineHeight: "1.3" }}>{data.customerAddress}</div>
+
+                      <table style={{ width: "100%", borderCollapse: "collapse", borderTop: "1px solid #e5e7eb", paddingTop: "4px" }}>
+                        <colgroup>
+                          <col style={{ width: "25%" }} />
+                          <col style={{ width: "30%" }} />
+                          <col style={{ width: "22%" }} />
+                          <col style={{ width: "23%" }} />
+                        </colgroup>
+                        <tbody>
+                          <tr style={{ fontSize: "10px", fontWeight: "600", color: "black" }}>
+                            <td style={{ padding: "4px 0 0 0" }}>GSTIN: <span className="font-bold">{data.customerGstin}</span></td>
+                            <td style={{ padding: "4px 0 0 0" }}>Place of Supply: <span className="font-bold">{data.placeOfSupply}</span></td>
+                            <td style={{ padding: "4px 0 0 0" }}>Mobile: <span className="font-bold">{data.customerMobile}</span></td>
+                            <td style={{ padding: "4px 0 0 0" }}>PAN Number: <span className="font-bold">{data.customerPan}</span></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Invoice Items Table */}
+                    <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "10px" }}>
+                      <colgroup>
+                        <col style={{ width: "8%" }} />
+                        <col style={{ width: "52%" }} />
+                        <col style={{ width: "12%" }} />
+                        <col style={{ width: "13%" }} />
+                        <col style={{ width: "15%" }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid black", background: "#f9fafb", fontWeight: "800", textTransform: "uppercase", fontSize: "9px" }}>
+                          <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>S.NO.</th>
+                          <th style={{ borderRight: "1px solid black", padding: "6px 8px" }}>SERVICES</th>
+                          <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>QTY.</th>
+                          <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right" }}>RATE</th>
+                          <th style={{ padding: "6px 8px", textAlign: "right" }}>AMOUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.items.map((item, idx) => (
+                          <tr key={item.id} style={{ borderBottom: "1px solid #e5e7eb", verticalAlign: "top" }}>
+                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center", color: "#4b5563", fontWeight: "600" }}>{idx + 1}</td>
+                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", fontWeight: "600", color: "#111827", overflowWrap: "anywhere" }}>
+                              {item.description || "—"}
+                            </td>
+                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center", fontWeight: "bold" }}>
+                              {item.qty === "" ? 0 : item.qty} {item.unit || "QTY"}
+                            </td>
+                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
+                              {(item.rate === "" ? 0 : item.rate).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold", color: "#111827" }}>
+                              {((item.qty === "" ? 0 : item.qty) * (item.rate === "" ? 0 : item.rate)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Blank fill rows to maintain A4 aesthetic structure if items are few */}
+                        {Array.from({ length: Math.max(0, 6 - data.items.length) }).map((_, idx) => (
+                          <tr key={`blank-${idx}`} style={{ height: "24px" }}>
+                            <td style={{ borderRight: "1px solid black" }}></td>
+                            <td style={{ borderRight: "1px solid black" }}></td>
+                            <td style={{ borderRight: "1px solid black" }}></td>
+                            <td style={{ borderRight: "1px solid black" }}></td>
+                            <td></td>
+                          </tr>
+                        ))}
+
+                        {/* Total Before Tax row */}
+                        <tr style={{ borderTop: "1px solid black", fontWeight: "700", color: "#1f2937", background: "#f3f4f6" }}>
+                          <td style={{ borderRight: "1px solid black" }}></td>
+                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", textTransform: "uppercase" }}>Total Before Tax</td>
+                          <td style={{ borderRight: "1px solid black" }}></td>
+                          <td style={{ borderRight: "1px solid black" }}></td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
+                            ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+
+                        {/* Sub-tax entries row inside services */}
+                        {!data.isInterState ? (
+                          <>
+                            <tr style={{ fontWeight: "600", color: "#374151" }}>
+                              <td style={{ borderRight: "1px solid black" }}></td>
+                              <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
+                                CGST @{((data.taxRatePercent === "" ? 0 : data.taxRatePercent) / 2)}%
+                              </td>
+                              <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                              <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
+                                ₹ {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                            <tr style={{ fontWeight: "600", color: "#374151" }}>
+                              <td style={{ borderRight: "1px solid black" }}></td>
+                              <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
+                                SGST @{((data.taxRatePercent === "" ? 0 : data.taxRatePercent) / 2)}%
+                              </td>
+                              <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                              <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
+                                ₹ {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr style={{ borderTop: "1px solid black", fontWeight: "600", color: "#374151" }}>
+                            <td style={{ borderRight: "1px solid black" }}></td>
+                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
+                              IGST @{data.taxRatePercent === "" ? 0 : data.taxRatePercent}%
+                            </td>
+                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
+                              ₹ {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Total row */}
+                        <tr style={{ borderTop: "1px solid black", background: "#f9fafb", fontWeight: "900", fontSize: "10.5px" }}>
+                          <td style={{ borderRight: "1px solid black" }}></td>
+                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textTransform: "uppercase", textAlign: "right" }}>TOTAL</td>
+                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>{totalQty}</td>
+                          <td style={{ borderRight: "1px solid black" }}></td>
+                          <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                            ₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Lower Tax Breakdown Table */}
+                    <table style={{ width: "100%", borderCollapse: "collapse", borderTop: "1px solid black", borderBottom: "1px solid black", textAlign: "center", fontSize: "9px" }}>
+                      <colgroup>
+                        <col style={{ width: "15%" }} />
+                        <col style={{ width: "18%" }} />
+                        {!data.isInterState ? (
+                          <>
+                            <col style={{ width: "11%" }} />
+                            <col style={{ width: "14%" }} />
+                            <col style={{ width: "11%" }} />
+                            <col style={{ width: "14%" }} />
+                          </>
+                        ) : (
+                          <>
+                            <col style={{ width: "22%" }} />
+                            <col style={{ width: "28%" }} />
+                          </>
+                        )}
+                        <col style={{ width: "17%" }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid black", background: "#f9fafb", fontWeight: "800", textTransform: "uppercase" }}>
+                          <th style={{ borderRight: "1px solid black", padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>HSN/SAC</th>
+                          <th style={{ borderRight: "1px solid black", padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>Taxable Value</th>
+                          {!data.isInterState ? (
+                            <>
+                              <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>CGST</th>
+                              <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>SGST</th>
+                            </>
+                          ) : (
+                            <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>IGST</th>
+                          )}
+                          <th style={{ padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>Total Tax Amount</th>
+                        </tr>
+                        <tr style={{ background: "#f9fafb", fontWeight: "800", borderBottom: "1px solid black" }}>
+                          {!data.isInterState ? (
+                            <>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
+                            </>
+                          ) : (
+                            <>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
+                              <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ fontWeight: "600", color: "#374151" }}>
+                          <td style={{ borderRight: "1px solid black", padding: "4px" }}>-</td>
+                          <td style={{ borderRight: "1px solid black", padding: "4px", textAlign: "right" }}>
+                            {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          {!data.isInterState ? (
+                            <>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}>{((data.taxRatePercent === "" ? 0 : data.taxRatePercent) / 2)}%</td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}>{((data.taxRatePercent === "" ? 0 : data.taxRatePercent) / 2)}%</td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}>{data.taxRatePercent === "" ? 0 : data.taxRatePercent}%</td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </>
+                          )}
+                          <td style={{ padding: "4px", textAlign: "right", fontWeight: "bold", color: "black" }}>
+                            ₹ {totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                        {/* Total Breakdown Row */}
+                        <tr style={{ borderTop: "1px solid black", background: "#f9fafb", fontWeight: "800", color: "black" }}>
+                          <td style={{ borderRight: "1px solid black", padding: "4px" }}>Total</td>
+                          <td style={{ borderRight: "1px solid black", padding: "4px", textAlign: "right" }}>
+                            {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          {!data.isInterState ? (
+                            <>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
+                              <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
+                                {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                            </>
+                          )}
+                          <td style={{ padding: "4px", textAlign: "right", fontWeight: "900" }}>
+                            ₹ {totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Total Amount in Words */}
+                    <div style={{ padding: "8px", borderBottom: "1px solid black" }}>
+                      <div style={{ fontSize: "8.5px", fontWeight: "800", color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                        Total Amount (in words)
+                      </div>
+                      <div style={{ fontSize: "11px", fontWeight: "900", color: "black", marginTop: "2px" }}>
+                        {numberToIndianWords(grandTotal)}
+                      </div>
+                    </div>
+
+                    {/* Bottom details block (Notes, Bank Details, Terms) positioned absolutely at bottom of outer border */}
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        borderTop: "1px solid black",
+                        fontSize: "9px"
+                      }}
+                    >
+                      <colgroup>
+                        <col style={{ width: "33.33%" }} />
+                        <col style={{ width: "33.33%" }} />
+                        <col style={{ width: "33.34%" }} />
+                      </colgroup>
+                      <tbody>
+                        <tr>
+                          {/* Notes */}
+                          <td style={{ borderRight: "1px solid black", padding: "8px", verticalAlign: "top" }}>
+                            <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Notes</div>
+                            {data.workOrderNo && (
+                              <div style={{ fontWeight: "600", color: "black" }}>
+                                Work Order No: <span style={{ fontWeight: "800" }}>{data.workOrderNo}</span>
+                              </div>
+                            )}
+                            {data.paymentTerm && (
+                              <div style={{ fontWeight: "600", color: "black", marginTop: "2px" }}>
+                                Payment Term: <span style={{ fontWeight: "800" }}>{data.paymentTerm}</span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Bank Details */}
+                          <td style={{ borderRight: "1px solid black", padding: "8px", verticalAlign: "top" }}>
+                            <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Bank Details</div>
+                            <table style={{ width: "100%", fontSize: "9px", borderCollapse: "collapse" }}>
+                              <tbody>
+                                <tr>
+                                  <td style={{ fontWeight: "bold", color: "#4b5563", width: "60px", padding: "1px 0" }}>Name:</td>
+                                  <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.accountHolder}</td>
+                                </tr>
+                                <tr>
+                                  <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>IFSC Code:</td>
+                                  <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.ifscCode}</td>
+                                </tr>
+                                <tr>
+                                  <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>Account No:</td>
+                                  <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.accountNo}</td>
+                                </tr>
+                                <tr>
+                                  <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>Bank:</td>
+                                  <td style={{ fontWeight: "800", color: "black", padding: "1px 0", lineHeight: "1.1" }}>{data.bankName}, {data.bankBranch}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+
+                          {/* Terms & Conditions */}
+                          <td style={{ padding: "8px", verticalAlign: "top" }}>
+                            <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Terms and Conditions</div>
+                            <div style={{ fontWeight: "600", color: "black", whiteSpace: "pre-line", lineHeight: "1.2" }}>
+                              {data.termsAndConditions}
+                            </div>
+                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-
-                  {/* Invoice Items Table */}
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "10px" }}>
-                    <colgroup>
-                      <col style={{ width: "8%" }} />
-                      <col style={{ width: "52%" }} />
-                      <col style={{ width: "12%" }} />
-                      <col style={{ width: "13%" }} />
-                      <col style={{ width: "15%" }} />
-                    </colgroup>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid black", background: "#f9fafb", fontWeight: "800", textTransform: "uppercase", fontSize: "9px" }}>
-                        <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>S.NO.</th>
-                        <th style={{ borderRight: "1px solid black", padding: "6px 8px" }}>SERVICES</th>
-                        <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>QTY.</th>
-                        <th style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right" }}>RATE</th>
-                        <th style={{ padding: "6px 8px", textAlign: "right" }}>AMOUNT</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.items.map((item, idx) => (
-                        <tr key={item.id} style={{ borderBottom: "1px solid #e5e7eb", verticalAlign: "top" }}>
-                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center", color: "#4b5563", fontWeight: "600" }}>{idx + 1}</td>
-                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", fontWeight: "600", color: "#111827", overflowWrap: "anywhere" }}>
-                            {item.description || "—"}
-                          </td>
-                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center", fontWeight: "bold" }}>
-                            {item.qty} {item.unit || "QTY"}
-                          </td>
-                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
-                            {item.rate.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </td>
-                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold", color: "#111827" }}>
-                            {(item.qty * item.rate).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
-                      
-                      {/* Blank fill rows to maintain A4 aesthetic structure if items are few */}
-                      {Array.from({ length: Math.max(0, 6 - data.items.length) }).map((_, idx) => (
-                        <tr key={`blank-${idx}`} style={{ height: "24px" }}>
-                          <td style={{ borderRight: "1px solid black" }}></td>
-                          <td style={{ borderRight: "1px solid black" }}></td>
-                          <td style={{ borderRight: "1px solid black" }}></td>
-                          <td style={{ borderRight: "1px solid black" }}></td>
-                          <td></td>
-                        </tr>
-                      ))}
-
-                      {/* Total Before Tax row */}
-                      <tr style={{ borderTop: "1px solid black", fontWeight: "700", color: "#1f2937", background: "#f3f4f6" }}>
-                        <td style={{ borderRight: "1px solid black" }}></td>
-                        <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", textTransform: "uppercase" }}>Total Before Tax</td>
-                        <td style={{ borderRight: "1px solid black" }}></td>
-                        <td style={{ borderRight: "1px solid black" }}></td>
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
-                          ₹ {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-
-                      {/* Sub-tax entries row inside services */}
-                      {!data.isInterState ? (
-                        <>
-                          <tr style={{ fontWeight: "600", color: "#374151" }}>
-                            <td style={{ borderRight: "1px solid black" }}></td>
-                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
-                              CGST @{(data.taxRatePercent / 2)}%
-                            </td>
-                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
-                              ₹ {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                          <tr style={{ fontWeight: "600", color: "#374151" }}>
-                            <td style={{ borderRight: "1px solid black" }}></td>
-                            <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
-                              SGST @{(data.taxRatePercent / 2)}%
-                            </td>
-                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                            <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
-                              ₹ {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                        </>
-                      ) : (
-                        <tr style={{ borderTop: "1px solid black", fontWeight: "600", color: "#374151" }}>
-                          <td style={{ borderRight: "1px solid black" }}></td>
-                          <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "right", fontWeight: "extrabold", fontStyle: "italic" }}>
-                            IGST @{data.taxRatePercent}%
-                          </td>
-                          <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                          <td style={{ borderRight: "1px solid black", textAlign: "center" }}>-</td>
-                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "bold" }}>
-                            ₹ {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      )}
-
-                      {/* Total row */}
-                      <tr style={{ borderTop: "1px solid black", background: "#f9fafb", fontWeight: "900", fontSize: "10.5px" }}>
-                        <td style={{ borderRight: "1px solid black" }}></td>
-                        <td style={{ borderRight: "1px solid black", padding: "6px 8px", textTransform: "uppercase", textAlign: "right" }}>TOTAL</td>
-                        <td style={{ borderRight: "1px solid black", padding: "6px 8px", textAlign: "center" }}>{totalQty}</td>
-                        <td style={{ borderRight: "1px solid black" }}></td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                          ₹ {grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  {/* Lower Tax Breakdown Table */}
-                  <table style={{ width: "100%", borderCollapse: "collapse", borderTop: "1px solid black", borderBottom: "1px solid black", textAlign: "center", fontSize: "9px" }}>
-                    <colgroup>
-                      <col style={{ width: "15%" }} />
-                      <col style={{ width: "18%" }} />
-                      {!data.isInterState ? (
-                        <>
-                          <col style={{ width: "11%" }} />
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "11%" }} />
-                          <col style={{ width: "14%" }} />
-                        </>
-                      ) : (
-                        <>
-                          <col style={{ width: "22%" }} />
-                          <col style={{ width: "28%" }} />
-                        </>
-                      )}
-                      <col style={{ width: "17%" }} />
-                    </colgroup>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid black", background: "#f9fafb", fontWeight: "800", textTransform: "uppercase" }}>
-                        <th style={{ borderRight: "1px solid black", padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>HSN/SAC</th>
-                        <th style={{ borderRight: "1px solid black", padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>Taxable Value</th>
-                        {!data.isInterState ? (
-                          <>
-                            <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>CGST</th>
-                            <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>SGST</th>
-                          </>
-                        ) : (
-                          <th style={{ borderRight: "1px solid black", borderBottom: "1px solid black", padding: "3px 2px 6px 2px" }} colSpan={2}>IGST</th>
-                        )}
-                        <th style={{ padding: "5px 4px 15px 4px", verticalAlign: "top" }} rowSpan={2}>Total Tax Amount</th>
-                      </tr>
-                      <tr style={{ background: "#f9fafb", fontWeight: "800", borderBottom: "1px solid black" }}>
-                        {!data.isInterState ? (
-                          <>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
-                          </>
-                        ) : (
-                          <>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Rate</th>
-                            <th style={{ borderRight: "1px solid black", padding: "3px 2px 6px 2px" }}>Amount</th>
-                          </>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ fontWeight: "600", color: "#374151" }}>
-                        <td style={{ borderRight: "1px solid black", padding: "4px" }}>-</td>
-                        <td style={{ borderRight: "1px solid black", padding: "4px", textAlign: "right" }}>
-                          {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        {!data.isInterState ? (
-                          <>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}>{(data.taxRatePercent / 2)}%</td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}>{(data.taxRatePercent / 2)}%</td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}>{data.taxRatePercent}%</td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </>
-                        )}
-                        <td style={{ padding: "4px", textAlign: "right", fontWeight: "bold", color: "black" }}>
-                          ₹ {totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                      {/* Total Breakdown Row */}
-                      <tr style={{ borderTop: "1px solid black", background: "#f9fafb", fontWeight: "800", color: "black" }}>
-                        <td style={{ borderRight: "1px solid black", padding: "4px" }}>Total</td>
-                        <td style={{ borderRight: "1px solid black", padding: "4px", textAlign: "right" }}>
-                          {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                        {!data.isInterState ? (
-                          <>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td style={{ borderRight: "1px solid black", padding: "2px" }}></td>
-                            <td style={{ borderRight: "1px solid black", padding: "2px", textAlign: "right" }}>
-                              {igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </td>
-                          </>
-                        )}
-                        <td style={{ padding: "4px", textAlign: "right", fontWeight: "900" }}>
-                          ₹ {totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  {/* Total Amount in Words */}
-                  <div style={{ padding: "8px", borderBottom: "1px solid black" }}>
-                    <div style={{ fontSize: "8.5px", fontWeight: "800", color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      Total Amount (in words)
-                    </div>
-                    <div style={{ fontSize: "11px", fontWeight: "900", color: "black", marginTop: "2px" }}>
-                      {numberToIndianWords(grandTotal)}
-                    </div>
-                  </div>
-
-                  {/* Bottom details block (Notes, Bank Details, Terms) positioned absolutely at bottom of outer border */}
-                  <table 
-                    style={{ 
-                      width: "100%", 
-                      borderCollapse: "collapse", 
-                      position: "absolute", 
-                      bottom: 0, 
-                      left: 0, 
-                      right: 0, 
-                      borderTop: "1px solid black", 
-                      fontSize: "9px" 
-                    }}
-                  >
-                    <colgroup>
-                      <col style={{ width: "33.33%" }} />
-                      <col style={{ width: "33.33%" }} />
-                      <col style={{ width: "33.34%" }} />
-                    </colgroup>
-                    <tbody>
-                      <tr>
-                        {/* Notes */}
-                        <td style={{ borderRight: "1px solid black", padding: "8px", verticalAlign: "top" }}>
-                          <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Notes</div>
-                          {data.workOrderNo && (
-                            <div style={{ fontWeight: "600", color: "black" }}>
-                              Work Order No: <span style={{ fontWeight: "800" }}>{data.workOrderNo}</span>
-                            </div>
-                          )}
-                          {data.paymentTerm && (
-                            <div style={{ fontWeight: "600", color: "black", marginTop: "2px" }}>
-                              Payment Term: <span style={{ fontWeight: "800" }}>{data.paymentTerm}</span>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Bank Details */}
-                        <td style={{ borderRight: "1px solid black", padding: "8px", verticalAlign: "top" }}>
-                          <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Bank Details</div>
-                          <table style={{ width: "100%", fontSize: "9px", borderCollapse: "collapse" }}>
-                            <tbody>
-                              <tr>
-                                <td style={{ fontWeight: "bold", color: "#4b5563", width: "60px", padding: "1px 0" }}>Name:</td>
-                                <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.accountHolder}</td>
-                              </tr>
-                              <tr>
-                                <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>IFSC Code:</td>
-                                <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.ifscCode}</td>
-                              </tr>
-                              <tr>
-                                <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>Account No:</td>
-                                <td style={{ fontWeight: "800", color: "black", padding: "1px 0" }}>{data.accountNo}</td>
-                              </tr>
-                              <tr>
-                                <td style={{ fontWeight: "bold", color: "#4b5563", padding: "1px 0" }}>Bank:</td>
-                                <td style={{ fontWeight: "800", color: "black", padding: "1px 0", lineHeight: "1.1" }}>{data.bankName}, {data.bankBranch}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </td>
-
-                        {/* Terms & Conditions */}
-                        <td style={{ padding: "8px", verticalAlign: "top" }}>
-                          <div style={{ fontSize: "9px", fontWeight: "900", color: "#4b5563", marginBottom: "4px" }}>Terms and Conditions</div>
-                          <div style={{ fontWeight: "600", color: "black", whiteSpace: "pre-line", lineHeight: "1.2" }}>
-                            {data.termsAndConditions}
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </div>
+            {/* Custom Delete Confirmation Modal */}
+            {deleteConfirmIndex !== null && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm print:hidden">
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+                  <h2 className="text-base font-bold text-white">Remove Item</h2>
+                  <p className="text-sm text-slate-400">Do you want to remove this item?</p>
+                  <div className="flex justify-end space-x-3 pt-2">
+                    <button
+                      onClick={() => setDeleteConfirmIndex(null)}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-xs font-semibold transition cursor-pointer"
+                    >
+                      No
+                    </button>
+                    <button
+                      onClick={confirmRemoveItem}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-md text-xs font-semibold transition cursor-pointer"
+                    >
+                      Yes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
