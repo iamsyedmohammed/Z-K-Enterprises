@@ -184,7 +184,6 @@ export default function InvoiceGenerator() {
   const [previewScale, setPreviewScale] = useState(1);
   const [logoPreview, setLogoPreview] = useState<string | null>(defaultInvoiceData.sellerLogo);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [mobileTab, setMobileTab] = useState<"form" | "preview">("form");
 
   // Password gate
   const HARDCODED_PASSWORD = "ZK@invoice2026";
@@ -209,14 +208,8 @@ export default function InvoiceGenerator() {
         // Desktop two-column layout
         const scaleVal = Math.min((window.innerWidth - 640) / 950, 1);
         setPreviewScale(scaleVal < 0.65 ? 0.65 : scaleVal);
-      } else if (window.innerWidth >= 768) {
-        // Tablet: full width preview
-        const scaleVal = (window.innerWidth - 64) / 794;
-        setPreviewScale(scaleVal < 0.5 ? 0.5 : scaleVal);
       } else {
-        // Mobile: scale to fit screen width
-        const scaleVal = (window.innerWidth - 32) / 794;
-        setPreviewScale(scaleVal < 0.35 ? 0.35 : scaleVal);
+        setPreviewScale(1);
       }
     };
     window.addEventListener("resize", handleResize);
@@ -303,12 +296,7 @@ export default function InvoiceGenerator() {
 
   // Trigger Print API
   const handlePrint = () => {
-    const originalTitle = document.title;
-    document.title = `ZK Enterprises Invoice ${data.invoiceDate || ""}`;
     window.print();
-    setTimeout(() => {
-      document.title = originalTitle;
-    }, 100);
   };
 
   // Trigger PDF Generation
@@ -335,7 +323,7 @@ export default function InvoiceGenerator() {
       // Since container height is 296mm, we draw it at 0, 0 position, 210mm width and 296mm height.
       const pdf = new jsPDF("p", "mm", "a4");
       pdf.addImage(imgData, "JPEG", 0, 0, 210, 296);
-      pdf.save(`ZK Enterprises Invoice ${data.invoiceDate || ""}.pdf`);
+      pdf.save(`Invoice_${data.invoiceNo || "GST"}.pdf`);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
       alert("Error generating PDF. Please use the 'Print / Save PDF' option.");
@@ -384,65 +372,39 @@ export default function InvoiceGenerator() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col antialiased">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 py-3 px-4 md:px-6 flex items-center justify-between shadow-lg print:hidden">
+      <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 py-3 px-6 flex items-center justify-between shadow-lg print:hidden">
         <div>
-          <h1 className="text-base md:text-lg font-bold tracking-tight text-white">GST Invoice Generator</h1>
+          <h1 className="text-lg font-bold tracking-tight text-white">GST Invoice Generator</h1>
         </div>
-        <div className="flex items-center space-x-1.5 md:space-x-2">
+        <div className="flex items-center space-x-2">
           <button 
             onClick={resetForm}
-            className="flex items-center space-x-1.5 px-2 md:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm font-medium transition cursor-pointer"
           >
             <RotateCcw className="h-4 w-4" />
-            <span className="hidden md:inline">Reset Demo</span>
+            <span>Reset Demo</span>
           </button>
           <button 
             onClick={handlePrint}
-            className="flex items-center space-x-1.5 px-2 md:px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
           >
             <Printer className="h-4 w-4" />
-            <span className="hidden md:inline">Print / Save PDF</span>
+            <span>Print / Save PDF</span>
           </button>
           <button 
             onClick={handleDownloadPDF}
-            className="flex items-center space-x-1.5 px-2 md:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm font-medium transition cursor-pointer"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden md:inline">Download PDF</span>
+            <span>Download PDF</span>
           </button>
         </div>
       </header>
 
-      {/* Mobile Tab Switcher */}
-      <div className="xl:hidden flex border-b border-slate-800 bg-slate-950 print:hidden">
-        <button
-          onClick={() => setMobileTab("form")}
-          className={`flex-1 py-2.5 text-sm font-semibold transition ${
-            mobileTab === "form"
-              ? "text-blue-400 border-b-2 border-blue-400"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Edit Form
-        </button>
-        <button
-          onClick={() => setMobileTab("preview")}
-          className={`flex-1 py-2.5 text-sm font-semibold transition ${
-            mobileTab === "preview"
-              ? "text-blue-400 border-b-2 border-blue-400"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Preview
-        </button>
-      </div>
-
       {/* Main Layout */}
       <div className="flex-1 flex flex-col xl:flex-row overflow-hidden print:bg-white print:text-black">
         {/* Left Side: Editor Form */}
-        <div className={`w-full xl:w-[580px] bg-slate-950/80 border-r border-slate-800 p-4 md:p-6 overflow-y-auto space-y-6 print:hidden ${
-          mobileTab === "form" ? "block" : "hidden xl:block"
-        }`}>
+        <div className="w-full xl:w-[580px] bg-slate-950/80 border-r border-slate-800 p-6 overflow-y-auto space-y-6 print:hidden">
           {/* Seller Information */}
           <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-4">
             <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
@@ -858,9 +820,7 @@ export default function InvoiceGenerator() {
         </div>
 
         {/* Right Side: A4 Page Preview */}
-        <div className={`flex-1 bg-slate-900 flex justify-center items-start overflow-y-auto p-4 md:p-8 relative print:p-0 print:bg-white print:overflow-visible ${
-          mobileTab === "preview" ? "block" : "hidden xl:flex"
-        }`}>
+        <div className="flex-1 bg-slate-900 flex justify-center items-start overflow-y-auto p-4 md:p-8 relative print:p-0 print:bg-white print:overflow-visible">
           {/* A4 Container Scaling Wrapper */}
           <div 
             style={{ transform: `scale(${previewScale})`, transformOrigin: "top center" }}
