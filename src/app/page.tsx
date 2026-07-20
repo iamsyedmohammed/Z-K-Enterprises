@@ -875,7 +875,7 @@ export default function InvoiceGenerator() {
               <div
                 ref={previewRef}
                 id="invoice-print-area"
-                className="w-[210mm] h-[296mm] min-h-[296mm] max-h-[296mm] bg-white text-black flex flex-col font-sans select-text border border-gray-300 print:border-0 print:p-0 relative"
+                className="w-[210mm] h-[296mm] min-h-[296mm] max-h-[296mm] bg-white text-black flex flex-col font-sans select-text border border-gray-300 print:border-0 print:p-0 print:m-0 relative"
                 style={{ boxSizing: "border-box", padding: 0, fontFamily: "Arial, sans-serif" }}
               >
                 {/* Inner wrapper to handle padding correctly in html2canvas */}

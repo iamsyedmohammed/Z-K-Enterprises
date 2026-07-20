@@ -42,153 +42,79 @@ body {
   background-color: #ffffff !important;
 }
 
-/* ============================================================
-   PRINT STYLES — Universal cross-browser/cross-device
-   Tested targets: iOS Safari, Android Chrome, Firefox,
-   Samsung Internet, Desktop Chrome / Edge / Safari
-   ============================================================ */
 @media print {
-
-  /* Force color printing on all engines */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* ── Reset html ─────────────────────────────────────────── */
   html {
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: #ffffff !important;
   }
 
-  /* ── Reset body ─────────────────────────────────────────── */
   body {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important;
-    height: auto !important;
+    width: 210mm !important;
+    height: 296mm !important;
     overflow: visible !important;
-    /* block + text-align:center is the most universally compatible
-       centering method across iOS/Android/Firefox/desktop */
-    display: block !important;
-    text-align: center !important;
   }
 
-  /* ── Hide all UI; invoice children will override ────────── */
+  /* Hide everything using visibility so children can override */
   body * {
     visibility: hidden !important;
   }
 
-  /* ── Reveal invoice and all its descendants ─────────────── */
+  /* Show the invoice and all its children */
   #invoice-print-area,
   #invoice-print-area * {
     visibility: visible !important;
   }
 
-  /* ── Reset every ancestor div between body and the invoice ─
-     This nukes any flex/grid/absolute/transform from the outer
-     app shell so they cannot offset the invoice on mobile PDFs. */
-  body > div,
-  body > div > div,
-  body > div > div > div,
-  body > div > div > div > div {
-    display: block !important;
-    position: static !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    transform: none !important;
-    -webkit-transform: none !important;
-    flex: none !important;
-    text-align: center !important;
-    visibility: visible !important;
-  }
-
-  /* ── Outer scale wrapper ─────────────────────────────────── */
-  .invoice-scale-wrapper-outer {
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    position: static !important;
-    display: block !important;
-    transform: none !important;
-    -webkit-transform: none !important;
-    overflow: visible !important;
-    text-align: center !important;
-    visibility: visible !important;
-  }
-
-  /* ── Inner scale wrapper ─────────────────────────────────── */
-  .invoice-scale-wrapper-inner {
-    /* inline-block + parent text-align:center = rock-solid centering
-       on iOS Safari, Android Chrome, and all desktop browsers */
-    display: inline-block !important;
-    width: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    position: static !important;
-    transform: none !important;
-    -webkit-transform: none !important;
-    overflow: visible !important;
-    box-shadow: none !important;
-    visibility: visible !important;
-    text-align: left !important; /* restore left-align for invoice content */
-  }
-
-  /* ── The actual A4 invoice element ─────────────────────────
-     margin:0 auto here is a belt-and-suspenders backup for
-     the inline-block centering above.                         */
+  /* Position invoice centered on the A4 page */
   #invoice-print-area {
+    border: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transform: translateX(-50%) !important;
     width: 210mm !important;
     height: 296mm !important;
-    min-height: 296mm !important;
     max-height: none !important;
-
-    /* Centering */
-    margin: 0 auto !important;
-
-    /* Clear any leftover position/transform from normal view */
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    transform: none !important;
-    -webkit-transform: none !important;
-
-    /* Appearance */
-    background: #ffffff !important;
-    color: #000000 !important;
-    border: none !important;
-    box-shadow: none !important;
     padding: 0 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 50% !important;
     box-sizing: border-box !important;
     overflow: visible !important;
-
-    /* Prevent the invoice from splitting across pages */
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-
-    /* Crisp text in exported PDFs */
-    -webkit-font-smoothing: antialiased !important;
+    background: #ffffff !important;
   }
 
-  /* ── A4 page definition ──────────────────────────────────── */
+  /* Reset outer scaling wrapper in print */
+  .invoice-scale-wrapper-outer {
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+    position: static !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Reset inner scaling wrapper in print */
+  .invoice-scale-wrapper-inner {
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+    position: static !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
   @page {
-    size: A4 portrait;
-    margin: 0;
+    size: A4 portrait !important;
+    margin: 0 !important;
   }
 }
+
