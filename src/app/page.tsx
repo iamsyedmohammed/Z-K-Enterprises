@@ -44,6 +44,7 @@ interface InvoiceData {
   // Taxes Configuration
   taxRatePercent: number | ""; // e.g. 18 -> CGST 9%, SGST 9%
   isInterState: boolean; // if true, use IGST instead of CGST + SGST
+  hsnSac: string;
 
   // Bank Details
   bankName: string;
@@ -105,6 +106,7 @@ const defaultInvoiceData: InvoiceData = {
 
   taxRatePercent: 18,
   isInterState: false,
+  hsnSac: "9987",
 
   bankName: "State Bank of India",
   bankBranch: "MUSHEERABAD",
@@ -686,6 +688,17 @@ export default function InvoiceGenerator() {
                 </label>
               </div>
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">HSN / SAC Code</label>
+              <input
+                type="text"
+                name="hsnSac"
+                value={data.hsnSac || ""}
+                onChange={handleChange}
+                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
 
           {/* Bank Details */}
@@ -1117,7 +1130,7 @@ export default function InvoiceGenerator() {
                       </thead>
                       <tbody>
                         <tr style={{ fontWeight: "600", color: "#374151" }}>
-                          <td style={{ borderRight: "1px solid black", padding: "4px" }}>-</td>
+                          <td style={{ borderRight: "1px solid black", padding: "4px" }}>{data.hsnSac || "-"}</td>
                           <td style={{ borderRight: "1px solid black", padding: "4px", textAlign: "right" }}>
                             {subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                           </td>
